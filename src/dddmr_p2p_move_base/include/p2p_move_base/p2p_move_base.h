@@ -111,7 +111,7 @@ class P2PMoveBase : public rclcpp::Node {
     void recovery_behaviors_client_result_callback(const rclcpp_action::ClientGoalHandle<dddmr_sys_core::action::RecoveryBehaviors>::WrappedResult & result);
     bool is_recoverying_;
     bool is_recoverying_succeed_;
-    void startRecoveryBehaviors();
+    void startRecoveryBehaviors(std::string behavior_name);
 
 
 };

@@ -58,7 +58,7 @@ void PositionControlBehavior::onInitialize(){
   node_->get_parameter(name_ + ".distance_tolerance", distance_tolerance_);
   RCLCPP_INFO(node_->get_logger().get_child(name_), "distance_tolerance %.2f", distance_tolerance_);
 
-  node_->declare_parameter(name_ + ".trajectory_generator_name", rclcpp::ParameterValue("differential_drive_rotate_inplace"));
+  node_->declare_parameter(name_ + ".trajectory_generator_name", rclcpp::ParameterValue("omni_drive_one_step"));
   node_->get_parameter(name_ + ".trajectory_generator_name", trajectory_generator_name_);
   RCLCPP_INFO(node_->get_logger().get_child(name_), "trajectory_generator_name: %s", trajectory_generator_name_.c_str());  
 
@@ -200,11 +200,16 @@ void PositionControlBehavior::getDiffFromCurrentPoseToTargetPosition(
   //@Transform last pose to tf2 type
   //tf2::Quaternion(q.getX(), q.getY(), q.getZ(), q.getW())
   tf2_current_position_2_target_position.setRotation(q);
-  tf2_current_position_2_target_position.setOrigin(tf2::Vector3(robot_pose.pose.position.x, robot_pose.pose.position.y, robot_pose.pose.position.z));
+  tf2_current_position_2_target_position.setOrigin(tf2::Vector3(target_pose.pose.position.x, target_pose.pose.position.y, target_pose.pose.position.z));
   tf2::Stamped<tf2::Transform> tf2_trans_pin_pose;
-  tf2::fromMsg(robot_pose, tf2_trans_pin_pose);
+  rosMsg2Tf2Msg(robot_pose, tf2_trans_pin_pose);
   getYawAndDistanceDiffFromTwoPoses(tf2_trans_pin_pose, tf2_current_position_2_target_position, yaw_diff, distance_diff);
 
+}
+
+void PositionControlBehavior::rosMsg2Tf2Msg(const geometry_msgs::msg::PoseStamped& ros_pose, tf2::Stamped<tf2::Transform>& tf2_pose){
+  tf2_pose.setOrigin(tf2::Vector3(ros_pose.pose.position.x, ros_pose.pose.position.y, ros_pose.pose.position.z));
+  tf2_pose.setRotation(tf2::Quaternion(ros_pose.pose.orientation.x, ros_pose.pose.orientation.y, ros_pose.pose.orientation.z, ros_pose.pose.orientation.w));
 }
 
 void PositionControlBehavior::getYawAndDistanceDiffFromTwoPoses(
@@ -226,12 +231,11 @@ void PositionControlBehavior::getYawAndDistanceDiffFromTwoPoses(
 
 }
 
-void PositionControlBehavior::publishVelocity(double vx, double vy, double angular_z){
-  geometry_msgs::msg::Twist cmd_vel;
-  cmd_vel.linear.x = vx;
-  cmd_vel.linear.y = vy;
-  cmd_vel.angular.z = angular_z;
-  cmd_vel_pub_->publish(cmd_vel);
+void PositionControlBehavior::generateVelocity(double vx, double vy, double angular_z){
+  cmd_vel_stamped_.header.stamp = clock_->now();
+  cmd_vel_stamped_.twist.linear.x = vx;
+  cmd_vel_stamped_.twist.linear.y = vy;
+  cmd_vel_stamped_.twist.angular.z = angular_z;
 }
 
 dddmr_sys_core::RecoveryState PositionControlBehavior::runBehavior(
@@ -268,6 +272,11 @@ dddmr_sys_core::RecoveryState PositionControlBehavior::runBehavior(
   last_yaw_diff_ = 0.0;
   last_distance_diff_ = 0.0;
   double dt = 1.0/frequency_;
+
+  yaw_converge_count_ = 0;
+  distance_converge_count_ = 0;
+  yaw_goal_converge_count_ = 0;
+
   while (rclcpp::ok())
   {
 
@@ -295,10 +304,16 @@ dddmr_sys_core::RecoveryState PositionControlBehavior::runBehavior(
     perception_3d_ros_->getGlobalPose(trans_gbl2b);
     trans2Pose(trans_gbl2b, global_pose);
     getDiffFromCurrentPoseToTargetPosition(global_pose, target_pose, yaw_diff, distance_diff);
-    
-    if(fsm_state_ == recovery_behaviors::EnumFSMStatePositionControl::POINTING_ORIENTATION_TO_TARGET){
+    RCLCPP_DEBUG(node_->get_logger(), "Yaw diff: %.2f, distance_diff: %.2f", yaw_diff, distance_diff);
 
-      double pid_yaw = kp_yaw_ * yaw_diff + ki_yaw_ * yaw_error_i_ + kd_yaw_ * (yaw_diff - last_yaw_diff_);
+    if(fsm_state_ == recovery_behaviors::EnumFSMStatePositionControl::POINTING_ORIENTATION_TO_TARGET){
+      double pid_yaw = 0.0;
+      if(fabs(yaw_diff)>0.785){
+        pid_yaw = kp_yaw_ * yaw_diff;
+      }
+      else{
+        pid_yaw = kp_yaw_ * yaw_diff + ki_yaw_ * yaw_error_i_ + kd_yaw_ * (yaw_diff - last_yaw_diff_);
+      }
       
       if(pid_yaw>=0){
         pid_yaw = std::min(pid_yaw, 0.3);
@@ -307,21 +322,37 @@ dddmr_sys_core::RecoveryState PositionControlBehavior::runBehavior(
         pid_yaw = std::max(pid_yaw, -0.3);
       }
       
-      publishVelocity(0, 0, pid_yaw);
+      generateVelocity(0, 0, pid_yaw);
 
-      yaw_error_i_ += yaw_diff*dt;
+      if(fabs(yaw_diff)>0.785){
+      }
+      else{
+        yaw_error_i_ += yaw_diff*dt;
+      }
+ 
       last_yaw_diff_ = yaw_diff;
 
       if(fabs(yaw_diff)<yaw_tolerance_){
-        fsm_state_ = recovery_behaviors::EnumFSMStatePositionControl::STRAIGHT;
-        pubZeroVelocity();
+        yaw_converge_count_++;
+        if(yaw_converge_count_>10){
+          fsm_state_ = recovery_behaviors::EnumFSMStatePositionControl::STRAIGHT;
+          RCLCPP_INFO(node_->get_logger(), "Yaw aligned, go to Straight state.");
+          pubZeroVelocity();
+        }
       }
 
     }
     else if(fsm_state_ == recovery_behaviors::EnumFSMStatePositionControl::STRAIGHT){
-
-      double pid_distance = kp_distance_ * distance_diff + ki_distance_ * distance_error_i_ + kd_distance_ * (distance_diff - last_distance_diff_);
       
+      double pid_distance = 0.0;
+      if(fabs(ki_distance_>=0.3)){
+        pid_distance = kp_distance_ * distance_diff;
+      }
+      else{
+        pid_distance = kp_distance_ * distance_diff + ki_distance_ * distance_error_i_ + kd_distance_ * (distance_diff - last_distance_diff_);
+      }
+      
+      //@ cap max
       if(pid_distance>=0){
         pid_distance = std::min(pid_distance, 0.1);
       }
@@ -329,28 +360,52 @@ dddmr_sys_core::RecoveryState PositionControlBehavior::runBehavior(
         pid_distance = std::max(pid_distance, -0.1);
       }
       
-      publishVelocity(0, 0, pid_distance);
+      //@ increase min
+      if(pid_distance>=0){
+        pid_distance = std::max(pid_distance, 0.05);
+      }
+      else{
+        pid_distance = std::min(pid_distance, -0.05);
+      }
+
+      generateVelocity(pid_distance, 0, 0);
+
+      if(fabs(ki_distance_>=0.3)){
+      }
+      else{
+        distance_error_i_ += distance_diff*dt;
+      }
 
       distance_error_i_ += distance_diff*dt;
       last_distance_diff_ = distance_diff;
 
       if(fabs(distance_diff)<distance_tolerance_){
-        fsm_state_ = recovery_behaviors::EnumFSMStatePositionControl::ALIGN_ORIENTATION_FROM_GOAL;
-        yaw_error_i_ = 0.0;
-        last_yaw_diff_ = 0.0;
-        pubZeroVelocity();
+        distance_converge_count_++;
+        if(distance_converge_count_>10){
+          fsm_state_ = recovery_behaviors::EnumFSMStatePositionControl::ALIGN_ORIENTATION_FROM_GOAL;
+          RCLCPP_INFO(node_->get_logger(), "Distance aligned.");
+          yaw_error_i_ = 0.0;
+          last_yaw_diff_ = 0.0;
+          pubZeroVelocity();
+        }
       }
 
     }
 
     else if(fsm_state_ == recovery_behaviors::EnumFSMStatePositionControl::ALIGN_ORIENTATION_FROM_GOAL){
       tf2::Stamped<tf2::Transform> tf2_trans_robot_pose;
-      tf2::fromMsg(global_pose, tf2_trans_robot_pose);
+      rosMsg2Tf2Msg(global_pose, tf2_trans_robot_pose);
       tf2::Stamped<tf2::Transform> tf2_trans_target_pose;
-      tf2::fromMsg(target_pose, tf2_trans_target_pose);
+      rosMsg2Tf2Msg(target_pose, tf2_trans_target_pose);
       getYawAndDistanceDiffFromTwoPoses(tf2_trans_robot_pose, tf2_trans_target_pose, yaw_diff, distance_diff);
 
-      double pid_yaw = kp_yaw_ * yaw_diff + ki_yaw_ * yaw_error_i_ + kd_yaw_ * (yaw_diff - last_yaw_diff_);
+      double pid_yaw = 0.0;
+      if(fabs(yaw_diff)>0.785){
+        pid_yaw = kp_yaw_ * yaw_diff;
+      }
+      else{
+        pid_yaw = kp_yaw_ * yaw_diff + ki_yaw_ * yaw_error_i_ + kd_yaw_ * (yaw_diff - last_yaw_diff_);
+      }
       
       if(pid_yaw>=0){
         pid_yaw = std::min(pid_yaw, 0.3);
@@ -359,21 +414,94 @@ dddmr_sys_core::RecoveryState PositionControlBehavior::runBehavior(
         pid_yaw = std::max(pid_yaw, -0.3);
       }
       
-      publishVelocity(0, 0, pid_yaw);
+      generateVelocity(0, 0, pid_yaw);
 
-      yaw_error_i_ += yaw_diff*dt;
+      if(fabs(yaw_diff)>0.785){
+      }
+      else{
+        yaw_error_i_ += yaw_diff*dt;
+      }
+
       last_yaw_diff_ = yaw_diff;
 
       if(fabs(yaw_diff)<yaw_tolerance_){
-        goal_handle->succeed(result);
-        RCLCPP_INFO(node_->get_logger().get_child(name_), "Behavior succeed.");
-        m_recovery_result = dddmr_sys_core::RecoveryState::RECOVERY_DONE;
-        pubZeroVelocity();
-        break;
+        yaw_goal_converge_count_++;
+        if(yaw_goal_converge_count_>10){
+          goal_handle->succeed(result);
+          RCLCPP_INFO(node_->get_logger().get_child(name_), "Behavior succeed.");
+          m_recovery_result = dddmr_sys_core::RecoveryState::RECOVERY_DONE;
+          pubZeroVelocity();
+          break;
+        }
+      }
+
+    }
+    
+
+    //Do not create a function to set the parameters unless a nice structure is found
+    //Below assignment of variables is useful when migrate to ROS2
+    trajectory_generators_ros_->getSharedDataPtr()->robot_pose_ = trans_gbl2b;
+    trajectory_generators_ros_->getSharedDataPtr()->robot_state_ = shared_data_->robot_state_;
+    trajectory_generators_ros_->getSharedDataPtr()->overrided_twist_ = cmd_vel_stamped_;
+    trajectory_generators_ros_->initializeTheories_wi_Shared_data();
+
+    geometry_msgs::msg::PoseArray pose_arr;
+    pcl::PointCloud<pcl::PointXYZ> cuboids_pcl;
+
+    trajectories_ = std::make_shared<std::vector<base_trajectory::Trajectory>>();
+
+    //@ We queue all trajectories in trajectories_, then score them one by one in getBestTrajectory()
+    while(trajectory_generators_ros_->hasMoreTrajectories(trajectory_generator_name_)){
+      base_trajectory::Trajectory a_traj;
+      if(trajectory_generators_ros_->nextTrajectory(trajectory_generator_name_, a_traj)){
+        //@ collected all trajectories here, for later scoring
+        trajectories_->push_back(a_traj);
+        trajectory2posearray_cuboids(a_traj, pose_arr, cuboids_pcl);
       }
 
     }
 
+    pose_arr.header.frame_id = perception_3d_ros_->getGlobalUtils()->getGblFrame();
+    pose_arr.header.stamp = node_->get_clock()->now();
+    pub_trajectory_pose_array_->publish(pose_arr);
+
+    /*Update data for critics*/
+    std::unique_lock<mpc_critics::StackedScoringModel::model_mutex_t> critics_lock(*(mpc_critics_ros_->getStackedScoringModelPtr()->getMutex()));
+    //@ unless we come up with a better strcuture
+    //@ keep below for easy migration for ROS2
+    mpc_critics_ros_->getSharedDataPtr()->robot_pose_ = trans_gbl2b;
+    mpc_critics_ros_->getSharedDataPtr()->robot_state_ = shared_data_->robot_state_;
+    mpc_critics_ros_->getSharedDataPtr()->pcl_perception_ = perception_3d_ros_->getSharedDataPtr()->aggregate_observation_;
+    //@ Below function transform prune_plane from nav::msg to pcl type
+    //@ Below function put new perception in kdtree for critics to avoid obstacles
+    mpc_critics_ros_->updateSharedData();
+    base_trajectory::Trajectory best_traj;
+    getBestTrajectory(trajectory_generator_name_, best_traj);
+
+    //@ Reset kd tree/observations because it is shared_ptr and copied from perception_ros
+    mpc_critics_ros_->getSharedDataPtr()->pcl_perception_.reset(new pcl::PointCloud<pcl::PointXYZI>);
+    mpc_critics_ros_->getSharedDataPtr()->pcl_perception_kdtree_.reset(new pcl::KdTreeFLANN<pcl::PointXYZI>());
+
+    if(best_traj.cost_<0){
+      RCLCPP_WARN_THROTTLE(node_->get_logger().get_child(name_), *clock_, 5000,"%s: All trajectories are rejected by critics.", name_.c_str());
+      auto valid_time = clock_->now() - last_valid_control_;
+      if(valid_time.seconds() > 5.0){
+        pubZeroVelocity();
+        goal_handle->abort(result);
+        RCLCPP_INFO(node_->get_logger().get_child(name_), "Behavior abort.");
+        m_recovery_result = dddmr_sys_core::RecoveryState::RECOVERY_FAIL;
+        break;
+      }
+      pubZeroVelocity();    
+    }
+    else{
+      geometry_msgs::msg::Twist cmd_vel;
+      cmd_vel.linear.x = best_traj.xv_;
+      cmd_vel.angular.z = best_traj.thetav_;
+      cmd_vel_pub_->publish(cmd_vel);
+      last_valid_control_ = clock_->now();
+    }
+    
     r.sleep();
   }
   

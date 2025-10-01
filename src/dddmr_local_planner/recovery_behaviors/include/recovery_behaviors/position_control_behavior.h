@@ -84,6 +84,8 @@ class PositionControlBehavior: public RobotBehavior{
     
     double last_yaw_diff_, last_distance_diff_;
     
+    geometry_msgs::msg::TwistStamped cmd_vel_stamped_;
+
     void getDiffFromCurrentPoseToTargetPosition(
               geometry_msgs::msg::PoseStamped& first_pose, 
               geometry_msgs::msg::PoseStamped& last_pose,
@@ -94,10 +96,14 @@ class PositionControlBehavior: public RobotBehavior{
             tf2::Stamped<tf2::Transform>& tf2_trans_target_pose,
             double& yaw_diff, double& distance_diff);
 
-    void publishVelocity(double vx, double vy, double angular_z);
+    void generateVelocity(double vx, double vy, double angular_z);
+    
+    void rosMsg2Tf2Msg(const geometry_msgs::msg::PoseStamped& ros_pose, tf2::Stamped<tf2::Transform>& tf2_pose);
 
     recovery_behaviors::EnumFSMStatePositionControl fsm_state_;
-
+    
+    int yaw_converge_count_, distance_converge_count_, yaw_goal_converge_count_;
+  
   protected:
 
     virtual void onInitialize();
