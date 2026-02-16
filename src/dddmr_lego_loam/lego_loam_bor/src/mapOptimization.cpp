@@ -699,26 +699,28 @@ void MapOptimization::publishKeyPosesAndFrames() {
   
   geometry_msgs::msg::PoseArray pose_array;
   for(auto it = cloudKeyPoses6D->points.begin(); it!=cloudKeyPoses6D->points.end(); it++){
-    tf2::Transform key_pose_ci2c;
+    tf2::Transform tf2_trans_ci2c;
     tf2::Quaternion q;
     q.setRPY( (*it).roll, (*it).pitch, (*it).yaw);
-    key_pose_ci2c.setRotation(q);
-    key_pose_ci2c.setOrigin(tf2::Vector3((*it).x, (*it).y, (*it).z));
+    tf2_trans_ci2c.setRotation(q);
+    tf2_trans_ci2c.setOrigin(tf2::Vector3((*it).x, (*it).y, (*it).z));
 
-    tf2::Transform key_pose_ci2b;
-    key_pose_ci2b.mult(key_pose_ci2c, tf2_trans_c2s_);
+    tf2::Stamped<tf2::Transform> tf2_trans_m2c;
+    tf2::Stamped<tf2::Transform> tf2_trans_m2s;
+    tf2::Stamped<tf2::Transform> tf2_trans_m2b;
 
-    tf2::Transform key_pose_m2b;
-    key_pose_m2b.mult(tf2_trans_m2ci_, key_pose_ci2b);
+    tf2_trans_m2c.mult(tf2_trans_m2ci_, tf2_trans_ci2c);
+    tf2_trans_m2s.mult(tf2_trans_m2c, tf2_trans_c2s_);
+    tf2_trans_m2b.mult(tf2_trans_m2s, tf2_trans_b2s_.inverse());
 
     geometry_msgs::msg::Pose a_pose;
-    a_pose.position.x = key_pose_m2b.getOrigin().x();
-    a_pose.position.y = key_pose_m2b.getOrigin().y();
-    a_pose.position.z = key_pose_m2b.getOrigin().z();
-    a_pose.orientation.x = key_pose_m2b.getRotation().x();
-    a_pose.orientation.y = key_pose_m2b.getRotation().y();
-    a_pose.orientation.z = key_pose_m2b.getRotation().z();
-    a_pose.orientation.w = key_pose_m2b.getRotation().w();
+    a_pose.position.x = tf2_trans_m2b.getOrigin().x();
+    a_pose.position.y = tf2_trans_m2b.getOrigin().y();
+    a_pose.position.z = tf2_trans_m2b.getOrigin().z();
+    a_pose.orientation.x = tf2_trans_m2b.getRotation().x();
+    a_pose.orientation.y = tf2_trans_m2b.getRotation().y();
+    a_pose.orientation.z = tf2_trans_m2b.getRotation().z();
+    a_pose.orientation.w = tf2_trans_m2b.getRotation().w();
     pose_array.poses.push_back(a_pose);
   }
   pose_array.header.frame_id = "map";
