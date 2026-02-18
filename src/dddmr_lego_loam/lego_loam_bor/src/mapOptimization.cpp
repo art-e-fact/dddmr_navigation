@@ -64,13 +64,16 @@ MapOptimization::MapOptimization(std::string name,
   pubIcpTargetKeyFrames = this->create_publisher<sensor_msgs::msg::PointCloud2>("loopclosure_target_cloud", 1);  
 
   pubIcpKeyFrames = this->create_publisher<sensor_msgs::msg::PointCloud2>("corrected_cloud", 1);  
+
+  pubcloudKeyPoses6D = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_keypose_6d", 1);  
   
   pubRecentCornerKeyFrames = this->create_publisher<sensor_msgs::msg::PointCloud2>("recent_corner_cloud", 1);
   pubRecentSurfKeyFrames = this->create_publisher<sensor_msgs::msg::PointCloud2>("recent_surf_cloud", 1);
   pubLastOptimizedCornerKeyFrames = this->create_publisher<sensor_msgs::msg::PointCloud2>("optimized_corner_cloud", 1);
   pubLastOptimizedSurfKeyFrames = this->create_publisher<sensor_msgs::msg::PointCloud2>("optimized_surf_cloud", 1);
   pubSelectedCloudForLMOptimization = this->create_publisher<sensor_msgs::msg::PointCloud2>("selected_lm_cloud", 1);
-
+  
+  pubM2Ci = this->create_publisher<geometry_msgs::msg::TransformStamped>("lego_loam/m2ci", 1);  
   pubMap = this->create_publisher<sensor_msgs::msg::PointCloud2>("lego_loam_map", 1);  
   pubGround = this->create_publisher<sensor_msgs::msg::PointCloud2>("lego_loam_ground", 1);  
   pubGroundEdge = this->create_publisher<sensor_msgs::msg::PointCloud2>("lego_loam_ground_edge", 1);
@@ -147,23 +150,38 @@ MapOptimization::MapOptimization(std::string name,
   srvGetKeyFrameCloud = this->create_service<dddmr_sys_core::srv::GetKeyFrameCloud>("get_key_frame_cloud", std::bind(&MapOptimization::getKeyFrameCloud, this, std::placeholders::_1, std::placeholders::_2), rmw_qos_profile_services_default, get_key_frame_srv_cb_group_);
 
   timer_run_ = this->create_wall_timer(1ms, std::bind(&MapOptimization::run, this), timer_run_cb_group_);
-  timer_pub_gbl_map_ = this->create_wall_timer(500ms, std::bind(&MapOptimization::publishGlobalMapThread, this), timer_pub_gbl_map_cb_group_);
+  //timer_pub_gbl_map_ = this->create_wall_timer(500ms, std::bind(&MapOptimization::publishGlobalMapThread, this), timer_pub_gbl_map_cb_group_);
   timer_loop_closure_ = this->create_wall_timer(1000ms, std::bind(&MapOptimization::loopClosureThread, this), timer_loop_closure_cb_group_);
-  timer_ground_edge_detection_ = this->create_wall_timer(500ms, std::bind(&MapOptimization::groundEdgeDetectionThread, this), timer_pub_gbl_map_cb_group_);
+  timer_ground_edge_detection_ = this->create_wall_timer(200ms, std::bind(&MapOptimization::groundEdgeDetectionThread, this), timer_pub_gbl_map_cb_group_);
 
 }
 
 void MapOptimization::getKeyFrameCloud(const std::shared_ptr<dddmr_sys_core::srv::GetKeyFrameCloud::Request> request,
           std::shared_ptr<dddmr_sys_core::srv::GetKeyFrameCloud::Response> response){
 
-  pcl::PointCloud<PointType>::Ptr keyFrameBaseLink;
+  pcl::PointCloud<PointType>::Ptr keyFrameBaseLink, groundKeyFrameBaseLink, groundEdgeKeyFrameBaseLink;
   keyFrameBaseLink.reset(new pcl::PointCloud<PointType>());
-  if(request->key_frame_number>patchedGroundKeyFrames_Copy.size()-1)
-    return;
-  *keyFrameBaseLink = *transformPointCloud(patchedGroundKeyFrames_Copy[request->key_frame_number], &cloudKeyPoses6D->points[request->key_frame_number]);
-  pcl::transformPointCloud(*keyFrameBaseLink, *keyFrameBaseLink, trans_m2ci_af3_);
-  pcl::toROSMsg(*keyFrameBaseLink, response->key_frame_cloud);
+  groundKeyFrameBaseLink.reset(new pcl::PointCloud<PointType>());
+  groundEdgeKeyFrameBaseLink.reset(new pcl::PointCloud<PointType>());
+  if(!has_m2ci_af3_) return;
   
+  if(request->key_frame_number>=cornerCloudKeyFrames.size())
+    return;
+
+  if(request->key_frame_number>=patchedGroundKeyFrames.size())
+    return;
+
+  if(request->key_frame_number>=patchedGroundEdgeProcessedKeyFrames.size())
+    return;
+
+  if(request->key_frame_number>=cloudKeyPoses6D->size())
+    return;
+
+  *keyFrameBaseLink = *cornerCloudKeyFrames[request->key_frame_number] + *outlierCloudKeyFrames[request->key_frame_number];
+  pcl::toROSMsg(*keyFrameBaseLink, response->key_frame_cloud);
+  pcl::toROSMsg(*patchedGroundKeyFrames[request->key_frame_number], response->key_frame_ground);
+  pcl::toROSMsg(*patchedGroundEdgeProcessedKeyFrames[request->key_frame_number], response->key_frame_ground_edge);
+
 }
 
 void MapOptimization::pcdSaver(const std::shared_ptr<std_srvs::srv::Empty::Request> request,
@@ -712,6 +730,11 @@ void MapOptimization::publishTF() {
 void MapOptimization::publishKeyPosesAndFrames() {
   std::lock_guard<std::mutex> lock(mtx);
   
+  if(!has_m2ci_af3_)
+    return;
+
+  pubM2Ci->publish(trans_m2ci_);
+
   geometry_msgs::msg::PoseArray pose_array;
   for(auto it = cloudKeyPoses6D->points.begin(); it!=cloudKeyPoses6D->points.end(); it++){
     tf2::Transform tf2_trans_ci2c;
@@ -792,6 +815,12 @@ void MapOptimization::publishKeyPosesAndFrames() {
     cnt++;
   }
   pub_pose_graph_->publish(markerArray);
+  
+  sensor_msgs::msg::PointCloud2 cloud_msg_pose_6d;
+  pcl::toROSMsg(*cloudKeyPoses6D, cloud_msg_pose_6d);
+  cloud_msg_pose_6d.header.stamp = timeLaserOdometry_header_.stamp;
+  cloud_msg_pose_6d.header.frame_id = "map";
+  pubcloudKeyPoses6D->publish(cloud_msg_pose_6d);
   
 }
 
@@ -2084,6 +2113,7 @@ void MapOptimization::run() {
   tf2_trans_c2s_.setOrigin(tf2::Vector3(association.trans_c2s.transform.translation.x, association.trans_c2s.transform.translation.y, association.trans_c2s.transform.translation.z));
   tf2_trans_b2s_.setRotation(tf2::Quaternion(association.trans_b2s.transform.rotation.x, association.trans_b2s.transform.rotation.y, association.trans_b2s.transform.rotation.z, association.trans_b2s.transform.rotation.w));
   tf2_trans_b2s_.setOrigin(tf2::Vector3(association.trans_b2s.transform.translation.x, association.trans_b2s.transform.translation.y, association.trans_b2s.transform.translation.z));
+  trans_m2ci_ = association.trans_m2ci;
   trans_m2ci_af3_ = tf2::transformToEigen(association.trans_m2ci); //for pcl conversion
   tf2_trans_m2ci_.setRotation(tf2::Quaternion(association.trans_m2ci.transform.rotation.x, association.trans_m2ci.transform.rotation.y, association.trans_m2ci.transform.rotation.z, association.trans_m2ci.transform.rotation.w));
   tf2_trans_m2ci_.setOrigin(tf2::Vector3(association.trans_m2ci.transform.translation.x, association.trans_m2ci.transform.translation.y, association.trans_m2ci.transform.translation.z));

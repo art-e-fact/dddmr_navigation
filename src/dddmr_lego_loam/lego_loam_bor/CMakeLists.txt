@@ -142,8 +142,6 @@ else()
   )
 endif()
 
-
-
 #lego loam fa
 add_library(feature_association SHARED
   src/featureAssociation.cpp
@@ -165,6 +163,17 @@ target_link_libraries(map_optimization
   opt_icp_gn
 )
 ament_target_dependencies(map_optimization
+  ${dependencies}
+)
+
+#lego loam visualization
+add_library(lego_loam_map_visualization SHARED
+  src/utils/lego_loam_map_visualization.cpp
+)
+target_link_libraries(lego_loam_map_visualization
+  ${PCL_LIBRARIES}
+)
+ament_target_dependencies(lego_loam_map_visualization
   ${dependencies}
 )
 
@@ -228,6 +237,7 @@ target_link_libraries(lego_loam_bag
   image_projection
   feature_association
   map_optimization
+  lego_loam_map_visualization
   gtsam
 )
 ament_target_dependencies(lego_loam_bag
@@ -243,6 +253,7 @@ target_link_libraries(lego_loam
   image_projection
   feature_association
   map_optimization
+  lego_loam_map_visualization
   gtsam
 )
 ament_target_dependencies(lego_loam
@@ -360,6 +371,7 @@ install(TARGETS
   image_projection
   feature_association
   map_optimization
+  lego_loam_map_visualization
   pose_graph_editor
   interactive_pose_graph_editor
   ARCHIVE DESTINATION lib
@@ -393,6 +405,6 @@ install(DIRECTORY
 )
 
 ament_export_include_directories(include)
-ament_export_libraries(opt_icp_gn image_projection feature_association map_optimization pose_graph_editor interactive_pose_graph_editor)
+ament_export_libraries(opt_icp_gn image_projection feature_association map_optimization lego_loam_map_visualization pose_graph_editor interactive_pose_graph_editor)
 ament_export_dependencies(${dependencies})
 ament_package()

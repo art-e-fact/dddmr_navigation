@@ -1,7 +1,7 @@
 bag_reader:
   ros__parameters:
     use_sim_time: true
-    bag_file_dir: "/root/dddmr_bags/meydan_hotel"
+    bag_file_dir: "/root/dddmr_bags/weiwuyin_back_side"
     point_cloud_topic: "/lslidar_point_cloud"
     odometry_topic: "/odom"
     skip_frame: 2
@@ -59,7 +59,7 @@ lego_loam_mo:
         distance_between_key_frame: 1.0
         angle_between_key_frame: 1.0
 
-        enable_loop_closure: false
+        enable_loop_closure: true
 
         surrounding_keyframe_search_num: 20
         history_keyframe_search_radius: 12.0

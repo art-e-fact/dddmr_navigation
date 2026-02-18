@@ -19,7 +19,6 @@
 
 //@allows us to use pcl::transformPointCloud function
 #include <pcl/io/pcd_io.h>
-#include <tf2_eigen/tf2_eigen.hpp>
 #include <pcl/common/transforms.h>
 
 #include <geometry_msgs/msg/pose_array.hpp>
@@ -137,6 +136,7 @@ class MapOptimization : public rclcpp::Node
   tf2::Stamped<tf2::Transform> tf2_trans_m2ci_;
   tf2::Stamped<tf2::Transform> tf2_trans_c2s_; //camera2sensorlink
   tf2::Stamped<tf2::Transform> tf2_trans_b2s_; //baselink2sensor to get ground distance
+  geometry_msgs::msg::TransformStamped trans_m2ci_;
   std::set<std::pair<int, int>> pose_graph_;
 
   gtsam::NonlinearFactorGraph gtSAMgraph;
@@ -169,6 +169,7 @@ class MapOptimization : public rclcpp::Node
 
   rclcpp::Clock::SharedPtr clock_;
   
+  rclcpp::Publisher<geometry_msgs::msg::TransformStamped>::SharedPtr pubM2Ci;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubMap;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubGround;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubGroundEdge;
@@ -178,7 +179,8 @@ class MapOptimization : public rclcpp::Node
   
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubIcpTargetKeyFrames;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubIcpKeyFrames;
-  
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubcloudKeyPoses6D;
+
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubRecentCornerKeyFrames;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubRecentSurfKeyFrames;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLastOptimizedCornerKeyFrames;

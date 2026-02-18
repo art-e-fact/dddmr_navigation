@@ -1,6 +1,7 @@
 #include "imageProjection.h"
 #include "featureAssociation.h"
 #include "mapOptimization.h"
+#include "lego_loam_map_visualization.hpp"
 
 #include <chrono>
 #include <functional>
@@ -26,11 +27,13 @@ int main(int argc, char** argv) {
   auto FA = std::make_shared<FeatureAssociation>("lego_loam_fa", projection_out_channel, association_out_channel);
   auto MO = std::make_shared<MapOptimization>("lego_loam_mo", association_out_channel);
   auto IPGE = std::make_shared<InteractivePoseGraphEditor>("interactive_pose_graph_editor", MO);
+  auto LLV = std::make_shared<LegoLoamVisualization>("lego_loam_map_visualization");
   rclcpp::executors::MultiThreadedExecutor executor;
   executor.add_node(IP);
   executor.add_node(FA);
   executor.add_node(MO);
   executor.add_node(IPGE);
+  executor.add_node(LLV);
   IP->tfInitial();
   FA->tfInitial();
   executor.spin();

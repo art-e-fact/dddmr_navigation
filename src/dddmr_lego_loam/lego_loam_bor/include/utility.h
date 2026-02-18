@@ -25,7 +25,8 @@
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/message_filter.h"
 #include "tf2_ros/transform_broadcaster.h"
- 
+#include <tf2_eigen/tf2_eigen.hpp>
+
 #include <vector>
 #include <cmath>
 #include <algorithm>
