@@ -22,22 +22,20 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubGround;
   
   void m2ci_callback(const geometry_msgs::msg::TransformStamped::SharedPtr msg);
-  void pointcloud_callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
   void cloudKeyPoses6D_callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
   void sync_ground_timer_callback();
   void pubMapTimer();
-  pcl::PointCloud<pcl::PointXYZ>::Ptr transformPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloudIn, PointTypePose *transformIn);
+  pcl::PointCloud<PointType>::Ptr transformPointCloud(pcl::PointCloud<PointType>::Ptr cloudIn, PointTypePose *transformIn);
 
   rclcpp::TimerBase::SharedPtr sync_ground_timer_;
   rclcpp::TimerBase::SharedPtr map_publish_timer_;
   rclcpp::Client<dddmr_sys_core::srv::GetKeyFrameCloud>::SharedPtr get_key_frame_cloud_client_;
   rclcpp::CallbackGroup::SharedPtr cbs_group_;
 
-  std::vector<pcl::PointCloud<pcl::PointXYZ>> key_frame_clouds_;
-  std::vector<pcl::PointCloud<pcl::PointXYZ>> key_frame_ground_clouds_;
-  std::vector<pcl::PointCloud<pcl::PointXYZ>> key_frame_ground_edge_clouds_;
+  std::vector<pcl::PointCloud<PointType>> key_frame_clouds_;
+  std::vector<pcl::PointCloud<PointType>> key_frame_ground_clouds_;
+  std::vector<pcl::PointCloud<PointType>> key_frame_ground_edge_clouds_;
   std::string base_frame_;
-  std::map<int, pcl::PointCloud<pcl::PointXYZ>> processed_ground_cloud_;
 
   pcl::PointCloud<PointTypePose>::Ptr cloudKeyPoses6D;
   Eigen::Affine3d trans_m2ci_af3_;

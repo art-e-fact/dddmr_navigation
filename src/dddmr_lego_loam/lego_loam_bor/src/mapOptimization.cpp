@@ -54,7 +54,8 @@ MapOptimization::MapOptimization(std::string name,
   current_ground_size_ = 0;
 
   pub_key_pose_arr_ = this->create_publisher<geometry_msgs::msg::PoseArray>("key_poses", 1);
-  
+  pub_key_pose_6d_ = this->create_publisher<geometry_msgs::msg::PoseArray>("key_poses_6d", 1);
+
   pub_pose_graph_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("pose_graph", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable());
 
   pubLaserCloudSurround = this->create_publisher<sensor_msgs::msg::PointCloud2>("laser_cloud_surround", 1);  
@@ -74,6 +75,8 @@ MapOptimization::MapOptimization(std::string name,
   pubSelectedCloudForLMOptimization = this->create_publisher<sensor_msgs::msg::PointCloud2>("selected_lm_cloud", 1);
   
   pubM2Ci = this->create_publisher<geometry_msgs::msg::TransformStamped>("lego_loam/m2ci", 1);  
+  pubC2S = this->create_publisher<geometry_msgs::msg::TransformStamped>("lego_loam/c2s", 1);  
+  pubB2S = this->create_publisher<geometry_msgs::msg::TransformStamped>("lego_loam/c2s", 1);  
   pubMap = this->create_publisher<sensor_msgs::msg::PointCloud2>("lego_loam_map", 1);  
   pubGround = this->create_publisher<sensor_msgs::msg::PointCloud2>("lego_loam_ground", 1);  
   pubGroundEdge = this->create_publisher<sensor_msgs::msg::PointCloud2>("lego_loam_ground_edge", 1);
@@ -159,10 +162,12 @@ MapOptimization::MapOptimization(std::string name,
 void MapOptimization::getKeyFrameCloud(const std::shared_ptr<dddmr_sys_core::srv::GetKeyFrameCloud::Request> request,
           std::shared_ptr<dddmr_sys_core::srv::GetKeyFrameCloud::Response> response){
 
-  pcl::PointCloud<PointType>::Ptr keyFrameBaseLink, groundKeyFrameBaseLink, groundEdgeKeyFrameBaseLink;
+  pcl::PointCloud<PointType>::Ptr keyFrameBaseLink;
   keyFrameBaseLink.reset(new pcl::PointCloud<PointType>());
-  groundKeyFrameBaseLink.reset(new pcl::PointCloud<PointType>());
-  groundEdgeKeyFrameBaseLink.reset(new pcl::PointCloud<PointType>());
+  pcl::toROSMsg(*keyFrameBaseLink, response->key_frame_cloud);
+  pcl::toROSMsg(*keyFrameBaseLink, response->key_frame_ground);
+  pcl::toROSMsg(*keyFrameBaseLink, response->key_frame_ground_edge);
+  
   if(!has_m2ci_af3_) return;
   
   if(request->key_frame_number>=cornerCloudKeyFrames.size())
@@ -178,6 +183,7 @@ void MapOptimization::getKeyFrameCloud(const std::shared_ptr<dddmr_sys_core::srv
     return;
 
   *keyFrameBaseLink = *cornerCloudKeyFrames[request->key_frame_number] + *outlierCloudKeyFrames[request->key_frame_number];
+  
   pcl::toROSMsg(*keyFrameBaseLink, response->key_frame_cloud);
   pcl::toROSMsg(*patchedGroundKeyFrames[request->key_frame_number], response->key_frame_ground);
   pcl::toROSMsg(*patchedGroundEdgeProcessedKeyFrames[request->key_frame_number], response->key_frame_ground_edge);
@@ -734,8 +740,11 @@ void MapOptimization::publishKeyPosesAndFrames() {
     return;
 
   pubM2Ci->publish(trans_m2ci_);
+  pubC2S->publish(trans_c2s_);
+  pubB2S->publish(trans_b2s_);
 
   geometry_msgs::msg::PoseArray pose_array;
+  geometry_msgs::msg::PoseArray pose_array_6d;
   for(auto it = cloudKeyPoses6D->points.begin(); it!=cloudKeyPoses6D->points.end(); it++){
     tf2::Transform tf2_trans_ci2c;
     tf2::Quaternion q;
@@ -760,11 +769,25 @@ void MapOptimization::publishKeyPosesAndFrames() {
     a_pose.orientation.z = tf2_trans_m2b.getRotation().z();
     a_pose.orientation.w = tf2_trans_m2b.getRotation().w();
     pose_array.poses.push_back(a_pose);
+
+    geometry_msgs::msg::Pose a_pose_6d;
+    a_pose.position.x = (*it).x;
+    a_pose.position.y = (*it).y;
+    a_pose.position.z = (*it).z;
+    a_pose.orientation.x = (*it).roll;
+    a_pose.orientation.y = (*it).pitch;
+    a_pose.orientation.z = (*it).yaw;
+    a_pose.orientation.w = 0.0;  
+    pose_array_6d.poses.push_back(a_pose_6d);
   }
   pose_array.header.frame_id = "map";
   pose_array.header.stamp = clock_->now();
   pub_key_pose_arr_->publish(pose_array);
-  
+
+  pose_array.header.frame_id = "map";
+  pose_array.header.stamp = clock_->now();
+  pub_key_pose_6d_->publish(pose_array_6d);
+
   //@visualize edge
   visualization_msgs::msg::MarkerArray markerArray;
   int cnt = 0;
@@ -1314,6 +1337,10 @@ void MapOptimization::groundEdgeDetectionThread() {
     return;
   
   if(cloudKeyPoses6D->points.size()<=patchedGroundEdgeProcessedKeyFrames.size()){
+    return;
+  }
+  
+  if(cloudKeyPoses6D->points.size()<patchedGroundEdgeKeyFrames.size()){
     return;
   }
   
@@ -2108,7 +2135,9 @@ void MapOptimization::run() {
 
   trans_c2s_af3_ = tf2::transformToEigen(association.trans_c2s);
   trans_s2c_af3_ = trans_c2s_af3_.inverse();
+  trans_b2s_ = association.trans_b2s;
   trans_b2s_af3_ = tf2::transformToEigen(association.trans_b2s);
+  trans_c2s_ = association.trans_c2s;
   tf2_trans_c2s_.setRotation(tf2::Quaternion(association.trans_c2s.transform.rotation.x, association.trans_c2s.transform.rotation.y, association.trans_c2s.transform.rotation.z, association.trans_c2s.transform.rotation.w));
   tf2_trans_c2s_.setOrigin(tf2::Vector3(association.trans_c2s.transform.translation.x, association.trans_c2s.transform.translation.y, association.trans_c2s.transform.translation.z));
   tf2_trans_b2s_.setRotation(tf2::Quaternion(association.trans_b2s.transform.rotation.x, association.trans_b2s.transform.rotation.y, association.trans_b2s.transform.rotation.z, association.trans_b2s.transform.rotation.w));

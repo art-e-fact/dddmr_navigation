@@ -76,28 +76,28 @@ void LegoLoamVisualization::sync_ground_timer_callback()
     [this](rclcpp::Client<dddmr_sys_core::srv::GetKeyFrameCloud>::SharedFuture future) {
       try {
         auto result = future.get();
-        pcl::PointCloud<pcl::PointXYZ> pcl_cloud;
-        pcl::PointCloud<pcl::PointXYZ> pcl_ground_cloud;
-        pcl::PointCloud<pcl::PointXYZ> pcl_ground_edge_cloud;
+        pcl::PointCloud<PointType> pcl_cloud;
+        pcl::PointCloud<PointType> pcl_ground_cloud;
+        pcl::PointCloud<PointType> pcl_ground_edge_cloud;
 
         pcl::fromROSMsg(result->key_frame_cloud, pcl_cloud);
         if(pcl_cloud.points.size()<1){
-          //RCLCPP_INFO(this->get_logger(), "Empty key frame");
+          RCLCPP_INFO(this->get_logger(), "Empty key frame1");
           return;
         }
         pcl::fromROSMsg(result->key_frame_ground, pcl_ground_cloud);
         if(pcl_ground_cloud.points.size()<1){
-          //RCLCPP_INFO(this->get_logger(), "Empty key frame");
+          RCLCPP_INFO(this->get_logger(), "Empty key frame2");
           return;
         }
 
         pcl::fromROSMsg(result->key_frame_ground_edge, pcl_ground_edge_cloud);
         if(pcl_ground_edge_cloud.points.size()<1){
-          //RCLCPP_INFO(this->get_logger(), "Empty key frame");
+          RCLCPP_INFO(this->get_logger(), "Empty key frame3");
           return;
         }
 
-        RCLCPP_INFO_THROTTLE(this->get_logger(), *clock_, 10000, "Sync key frame number: %lu with total size: %lu", key_frame_clouds_.size(), cloudKeyPoses6D->size());
+        RCLCPP_INFO_THROTTLE(this->get_logger(), *clock_, 1000, "Sync key frame number: %lu with total size: %lu", key_frame_clouds_.size(), cloudKeyPoses6D->size());
         key_frame_clouds_.push_back(pcl_cloud);
         key_frame_ground_clouds_.push_back(pcl_ground_cloud);
         key_frame_ground_edge_clouds_.push_back(pcl_ground_edge_cloud);
@@ -113,11 +113,11 @@ void LegoLoamVisualization::pubMapTimer()
   if(!has_m2ci_)
     return;
 
-  pcl::PointCloud<pcl::PointXYZ> map_cloud;
-  pcl::PointCloud<pcl::PointXYZ> ground_cloud;
+  pcl::PointCloud<PointType> map_cloud;
+  pcl::PointCloud<PointType> ground_cloud;
   size_t cnt = 0;
   for(auto it=key_frame_clouds_.begin();it!=key_frame_clouds_.end();it++){
-    pcl::PointCloud<pcl::PointXYZ> one_frame_map_cloud;
+    pcl::PointCloud<PointType> one_frame_map_cloud;
     one_frame_map_cloud= *transformPointCloud((*it).makeShared(), &cloudKeyPoses6D->points[cnt]);
     pcl::transformPointCloud(one_frame_map_cloud, one_frame_map_cloud, trans_m2ci_af3_);
     map_cloud+=one_frame_map_cloud;
@@ -125,7 +125,7 @@ void LegoLoamVisualization::pubMapTimer()
   }
   cnt = 0;
   for(auto it=key_frame_ground_clouds_.begin();it!=key_frame_ground_clouds_.end();it++){
-    pcl::PointCloud<pcl::PointXYZ> one_frame_map_cloud;
+    pcl::PointCloud<PointType> one_frame_map_cloud;
     one_frame_map_cloud= *transformPointCloud((*it).makeShared(), &cloudKeyPoses6D->points[cnt]);
     pcl::transformPointCloud(one_frame_map_cloud, one_frame_map_cloud, trans_m2ci_af3_);
     ground_cloud+=one_frame_map_cloud;
@@ -139,9 +139,9 @@ void LegoLoamVisualization::pubMapTimer()
   pubMap->publish(cloud_msg_map);
 
   sensor_msgs::msg::PointCloud2 cloud_msg_ground;
-  pcl::PointCloud<pcl::PointXYZ>::Ptr content_ground_ptr(new pcl::PointCloud<pcl::PointXYZ>(ground_cloud));
-  pcl::PointCloud<pcl::PointXYZ> content_ground_filtered;
-  pcl::VoxelGrid<pcl::PointXYZ> sor;
+  pcl::PointCloud<PointType>::Ptr content_ground_ptr(new pcl::PointCloud<PointType>(ground_cloud));
+  pcl::PointCloud<PointType> content_ground_filtered;
+  pcl::VoxelGrid<PointType> sor;
   sor.setInputCloud(content_ground_ptr);
   sor.setLeafSize(voxel_leaf_size_, voxel_leaf_size_, voxel_leaf_size_);
   sor.filter(content_ground_filtered);
@@ -153,10 +153,10 @@ void LegoLoamVisualization::pubMapTimer()
 }
 
 
-pcl::PointCloud<pcl::PointXYZ>::Ptr LegoLoamVisualization::transformPointCloud(
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloudIn, PointTypePose *transformIn) {
+pcl::PointCloud<PointType>::Ptr LegoLoamVisualization::transformPointCloud(
+    pcl::PointCloud<PointType>::Ptr cloudIn, PointTypePose *transformIn) {
 
-  pcl::PointCloud<pcl::PointXYZ>::Ptr cloudOut2(new pcl::PointCloud<pcl::PointXYZ>());
+  pcl::PointCloud<PointType>::Ptr cloudOut2(new pcl::PointCloud<PointType>());
   
   Eigen::Affine3f af3_yaw = Eigen::Affine3f::Identity();
   af3_yaw.rotate (Eigen::AngleAxisf (transformIn->yaw, Eigen::Vector3f::UnitZ()));

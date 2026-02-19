@@ -128,6 +128,7 @@ class MapOptimization : public rclcpp::Node
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
   rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr pub_key_pose_arr_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr pub_key_pose_6d_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_pose_graph_;
   //@ relative pose between current pose and nearest key frame for initial guess to opt_icp_gn
   tf2::Transform tf2_current2closestKeyFrame_;
@@ -136,7 +137,7 @@ class MapOptimization : public rclcpp::Node
   tf2::Stamped<tf2::Transform> tf2_trans_m2ci_;
   tf2::Stamped<tf2::Transform> tf2_trans_c2s_; //camera2sensorlink
   tf2::Stamped<tf2::Transform> tf2_trans_b2s_; //baselink2sensor to get ground distance
-  geometry_msgs::msg::TransformStamped trans_m2ci_;
+  geometry_msgs::msg::TransformStamped trans_m2ci_, trans_c2s_, trans_b2s_;
   std::set<std::pair<int, int>> pose_graph_;
 
   gtsam::NonlinearFactorGraph gtSAMgraph;
@@ -170,6 +171,8 @@ class MapOptimization : public rclcpp::Node
   rclcpp::Clock::SharedPtr clock_;
   
   rclcpp::Publisher<geometry_msgs::msg::TransformStamped>::SharedPtr pubM2Ci;
+  rclcpp::Publisher<geometry_msgs::msg::TransformStamped>::SharedPtr pubC2S;
+  rclcpp::Publisher<geometry_msgs::msg::TransformStamped>::SharedPtr pubB2S;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubMap;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubGround;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubGroundEdge;
