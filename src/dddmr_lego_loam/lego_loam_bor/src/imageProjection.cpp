@@ -242,6 +242,7 @@ ImageProjection::ImageProjection(std::string name, Channel<ProjectionOut>& outpu
   _full_info_cloud->points.resize(cloud_size);
   
   dsf_patched_ground_.setLeafSize(0.1, 0.1, 0.1);
+  yolo_labelled_point_cloud_.reset(new pcl::PointCloud<PointType>());
 }
 
 
@@ -508,8 +509,8 @@ void ImageProjection::projectPointCloud() {
   cv::Mat full_sized_mask = cv::Mat::zeros(inferenced_image.size(), CV_8UC1);
   for (const auto &object : objects) {
 
-    //@ label=1 is person, remove it
-    if(object.label==1){
+    //@ label=0 is people, remove it
+    if(object.label==0){
       cv::Mat roi_mask = full_sized_mask(object.rect);
       object.boxMask.copyTo(roi_mask);
     }
@@ -598,6 +599,8 @@ void ImageProjection::getNoPitchPoint(PointType& pt_in, PointType& pt_out){
 }
 
 void ImageProjection::zPitchRollFeatureRemoval() {
+  
+  yolo_labelled_point_cloud_.reset(new pcl::PointCloud<PointType>());
 
   geometry_msgs::msg::TransformStamped trans_lidar2horizontal;
   tf2::Quaternion q;
@@ -679,18 +682,6 @@ void ImageProjection::zPitchRollFeatureRemoval() {
         //We have found zPitchRoll features, label something we dont need for xYYawfeatures
         _label_mat(i, j) = -1;
         _label_mat(i+1, j) = -1;
-      
-#ifdef TRT_ENABLED
-        // TRT object detection to remove things we dont want to use for SLAM, such as moving object
-        if(is_trt_engine_exist_ && projected_image_queue_.size()==projected_image_stack_size_){
-          // it was generated as _range_mat(rowIdn, viscolumnIdn) = range;
-          cv::Vec3b pixel = range_mat_removing_moving_object_.at<cv::Vec3b>(_vertical_scans-i, j);
-          if(pixel[0]==0 && pixel[1]==0 && pixel[2]==0){
-            _label_mat(i, j) = -1;
-          }
-        }
-#endif
-
       }
 
       //@ 1. check upper and lower are in ground FOV
@@ -713,8 +704,22 @@ void ImageProjection::zPitchRollFeatureRemoval() {
         }
       }
 
-      if(in_ground_fov){
+#ifdef TRT_ENABLED
+      // TRT object detection to remove things we dont want to use for SLAM, such as moving object
+      if(is_trt_engine_exist_ && projected_image_queue_.size()==projected_image_stack_size_){
+        // it was generated as _range_mat(rowIdn, viscolumnIdn) = range;
+        cv::Vec3b pixel = range_mat_removing_moving_object_.at<cv::Vec3b>(_vertical_scans-i, j);
+        if(pixel[0]==0 && pixel[1]==0 && pixel[2]==0){
+          _label_mat(i, j) = -1;
+          _ground_mat(i, j) = -1;
+          _label_mat(i+1, j) = -1;
+          yolo_labelled_point_cloud_->push_back(_full_cloud->points[lowerInd]);
+          in_ground_fov = false;
+        }
+      }
+#endif
 
+      if(in_ground_fov){
         PointType lowerInd_pt_no_pitch, upperInd_pt_no_pitch;
         PointType lowerInd_left_pt_no_pitch;
         PointType lowerInd_right_pt_no_pitch;
@@ -904,6 +909,8 @@ void ImageProjection::cloudSegmentation() {
 
     for (size_t j = 0; j < _horizontal_scans; ++j) {
       if (_label_mat(i, j) > 0 || _ground_mat(i, j) == 1) {
+        if(_label_mat(i,j)==-2) //yolo label
+          continue;
         // outliers that will not be used for optimization (always continue)
         if (_label_mat(i, j) == 999999) {
           if (j % 5 == 0) {

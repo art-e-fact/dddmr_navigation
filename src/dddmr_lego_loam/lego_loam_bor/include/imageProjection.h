@@ -73,6 +73,7 @@ class ImageProjection : public rclcpp::Node
     pcl::PointCloud<PointType>::Ptr _outlier_cloud;
     pcl::PointCloud<PointType>::Ptr patched_ground_;
     pcl::PointCloud<PointType>::Ptr patched_ground_edge_;
+    pcl::PointCloud<PointType>::Ptr yolo_labelled_point_cloud_;
 
     pcl::VoxelGrid<PointType> dsf_patched_ground_;
 
