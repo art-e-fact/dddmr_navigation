@@ -1222,7 +1222,6 @@ void MapOptimization::extractSurroundingKeyFrames() {
   pcl::removeNaNFromPointCloud(*laserCloudSurfFromMap, *laserCloudSurfFromMap, indices_tmp2);
   downSizeFilterSurf.setInputCloud(laserCloudSurfFromMap);
   downSizeFilterSurf.filter(*laserCloudSurfFromMapDS);
-  RCLCPP_ERROR(this->get_logger(), "%lu, %lu", laserCloudSurfFromMap->points.size(), laserCloudSurfFromMapDS->points.size());
   laserCloudSurfFromMapDSNum = laserCloudSurfFromMapDS->points.size();
 
 }
