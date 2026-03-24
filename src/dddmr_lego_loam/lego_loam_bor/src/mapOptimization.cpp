@@ -140,6 +140,10 @@ MapOptimization::MapOptimization(std::string name,
   declare_parameter("mapping.broadcast_external_odom_tf", rclcpp::ParameterValue(true));
   this->get_parameter("mapping.broadcast_external_odom_tf", broadcast_external_odom_tf_);
   RCLCPP_INFO(this->get_logger(), "mapping.broadcast_external_odom_tf: %d", broadcast_external_odom_tf_);
+
+  declare_parameter("mapping.generate_testing_pg", rclcpp::ParameterValue(false));
+  this->get_parameter("mapping.generate_testing_pg", generate_testing_pg_);
+  RCLCPP_INFO(this->get_logger(), "mapping.generate_testing_pg: %d", generate_testing_pg_);  
   
   allocateMemory();
 
@@ -196,7 +200,17 @@ void MapOptimization::pcdSaver(const std::shared_ptr<std_srvs::srv::Empty::Reque
 
   std::string mapping_dir_string;
   auto env_p = std::getenv("DDDMR_MAPPING_DIR");
-  if ( env_p == NULL ) {
+  if(generate_testing_pg_){
+    mapping_dir_string = std::string("/tmp/testing_pg");
+    try {
+      std::uintmax_t removed_count = std::filesystem::remove_all(mapping_dir_string); 
+      RCLCPP_INFO(this->get_logger(), "Generate testing pg is enabled, removing dir: %s", mapping_dir_string.c_str());
+    } catch (const std::filesystem::filesystem_error& e) {
+    }
+    std::filesystem::create_directory(mapping_dir_string);
+    RCLCPP_INFO(this->get_logger(), "Generate testing pg is enabled, create dir: %s", mapping_dir_string.c_str());
+  }
+  else if ( env_p == NULL ) {
     mapping_dir_string = std::string("/tmp/") + currentDateTime();
     std::filesystem::create_directory(mapping_dir_string);
     RCLCPP_INFO(this->get_logger(), "Create dir: %s", mapping_dir_string.c_str());

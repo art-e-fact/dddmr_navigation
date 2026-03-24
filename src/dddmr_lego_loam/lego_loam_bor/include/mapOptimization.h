@@ -374,6 +374,7 @@ private:
   bool broadcast_external_odom_tf_;
   bool has_m2ci_af3_;
   size_t current_ground_size_;
+  bool generate_testing_pg_;
 };
 
 #endif // MAPOPTIMIZATION_H

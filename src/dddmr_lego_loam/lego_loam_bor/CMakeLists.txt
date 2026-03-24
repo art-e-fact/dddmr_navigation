@@ -404,6 +404,52 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}/
 )
 
+
+#--- Everything below is CI/CD test ---
+
+#Check CI/CD build flag
+if(NOT TEST_ENABLED)
+    set(TEST_ENABLED OFF CACHE BOOL "Enable or disable Test")
+endif()
+
+if(TEST_ENABLED)
+
+  add_definitions(-DTEST_ENABLED) 
+  # Compile test and install them 
+  install(DIRECTORY
+    test
+    DESTINATION share/${PROJECT_NAME}/
+  )
+
+  #testing node
+  add_executable(mapping_mid360_t13_test_node
+    test/test_node/mapping_mid360_t13_test_node/mapping_mid360_t13_test_node.cpp
+  )
+  target_link_libraries(mapping_mid360_t13_test_node 
+    opt_icp_gn
+    ${PCL_LIBRARIES}
+  )
+  ament_target_dependencies(mapping_mid360_t13_test_node
+    ${dependencies}
+  )
+
+  install(PROGRAMS
+    test/test_node/mapping_mid360_t13_test_node/mapping_mid360_t13_test_node.py
+    DESTINATION lib/${PROJECT_NAME}
+  )
+
+  #install testing node
+  install(TARGETS
+    mapping_mid360_t13_test_node
+    RUNTIME DESTINATION lib/${PROJECT_NAME}
+  )
+
+endif()
+
+
+
+# --- Everything CI/CD test finish here ---
+
 ament_export_include_directories(include)
 ament_export_libraries(opt_icp_gn image_projection feature_association map_optimization lego_loam_map_visualization pose_graph_editor interactive_pose_graph_editor)
 ament_export_dependencies(${dependencies})

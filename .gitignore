@@ -176,3 +176,4 @@ cython_debug/
 *.trt
 *.pt
 *.onnx
+*.pyc
