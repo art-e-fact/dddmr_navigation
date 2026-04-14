@@ -147,6 +147,10 @@ Local_Planner::~Local_Planner(){
 
 }
 
+std::string Local_Planner::getControlFrame(){
+  return perception_3d_ros_->getGlobalUtils()->getRobotFrame();
+};
+
 void Local_Planner::parseCuboid(){
   marker_edge_.header.frame_id = perception_3d_ros_->getGlobalUtils()->getRobotFrame();;
   marker_edge_.header.stamp = clock_->now();
@@ -499,7 +503,11 @@ dddmr_sys_core::PlannerState Local_Planner::computeVelocityCommand(std::string t
     RCLCPP_ERROR(this->get_logger().get_child(name_), "Perception 3D is not ok.");
     return dddmr_sys_core::PERCEPTION_MALFUNCTION;
   }
-    
+  
+  if(!trajectory_generators_ros_->theoryExists(traj_gen_name)){
+    RCLCPP_ERROR(this->get_logger().get_child(name_), "Specified trajectory generator: %s is not declare in yaml nor not consistent", traj_gen_name.c_str());
+    return dddmr_sys_core::CONFIGURATION_ERROR;
+  }
 
   //for timing that gives real time even in simulation
   control_loop_time_ = clock_->now();

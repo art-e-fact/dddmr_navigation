@@ -110,4 +110,13 @@ bool StackedGenerator::nextTrajectory(std::string pname, base_trajectory::Trajec
 
 }
 
+/**
+ * Return existence of theory for the sanity check
+ */
+bool StackedGenerator::theoryExists(std::string pname){
+  if(theories_.count(pname))
+    return true;
+  return false;
+}
+
 }//end of name space
