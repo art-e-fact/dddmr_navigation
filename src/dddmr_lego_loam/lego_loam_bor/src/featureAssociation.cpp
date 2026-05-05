@@ -48,7 +48,7 @@ FeatureAssociation::FeatureAssociation(std::string name, Channel<ProjectionOut> 
   odom_topic_alive_ = false;
   odom_tf_alive_ = false;
   odom_tf_detect_number_ = 0;
-
+  baselink_frame_ = "base_link";
   //@ this cloud is for localization, therefore, we need good QoS
   pubCornerPointsSharp = this->create_publisher<sensor_msgs::msg::PointCloud2>
       ("laser_cloud_sharp", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable());
@@ -1496,7 +1496,6 @@ void FeatureAssociation::runFeatureAssociation() {
   cloudHeader = segInfo.header;
   cloudHeader.stamp = clock_->now();
   trans_c2s_ = projection.trans_c2s;
-  baselink_frame_ = "base_link";
   tf2_trans_b2s_.setOrigin(tf2::Vector3(projection.trans_b2s.transform.translation.x, 
                               projection.trans_b2s.transform.translation.y, projection.trans_b2s.transform.translation.z));
   tf2_trans_b2s_.setRotation(tf2::Quaternion(projection.trans_b2s.transform.rotation.x, 
@@ -1543,7 +1542,14 @@ void FeatureAssociation::runFeatureAssociation() {
   else{
     assignMappingOdometry(transformExternalOdometrySum);
   }
-
+  
+  if(odom_type_!="laser_odometry"){
+    if(!first_odom_prepared_){
+      RCLCPP_WARN(this->get_logger(), "External odometry is asked, but the topic is not received yet.");
+      return;
+    }
+  }
+  
   //publishOdometryPath();
 
   
