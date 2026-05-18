@@ -1,4 +1,4 @@
 [submodule "external/lite3/sdk_deploy"]
 	path = external/lite3/sdk_deploy
 	url = https://github.com/art-e-fact/sdk_deploy.git
-	branch = mid360-sensor
+	branch = dddrm
