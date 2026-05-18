@@ -1,4 +1,77 @@
 # 🤖 dddmr_navigation
+
+---
+## Deploy on Lite3 robot (Mid360s lidar) in Mujoco
+
+### 0. Installation
+
+```
+### setup repos
+cd [ROS2_WS]/src
+
+git clone git@github.com:art-e-fact/dddmr_navigation.git
+
+cd dddmr_navigation
+
+git submodule init
+
+git submodule update
+
+### build
+cd [ROS2_WS]
+
+source /opt/ros/humble/setup.bash
+
+rosdep install --from-paths src --ignore-src -r -y
+sudo apt install ros-humble-ackermann-msgs
+
+colcon build --symlink-install --cmake-args -DBUILD_PLATFORM=x86 -DCMAKE_BUILD_TYPE=Release
+
+source install/setup.bash
+
+### install python libraries for Lite3's sdk_deploy
+python3 -m venv venv
+touch venv/COLCON_IGNORE
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+### 1. Mapping mode
+
+- Launch:
+```
+ros2 launch lite3_sdk_deploy mujoco_simulation_ros2_dddrm.launch.py mode:=0 xml:=stairs_floors.xml
+```
+
+- (From another terminal) Save local map file:
+```
+ros2 service call /save_mapped_point_cloud std_srvs/srv/Empty
+```
+
+Note: The map will be saved into `/tmp/2026_xxx`, use this path when update navigation config file.
+
+### 2. Navigation mode
+
+- Modify config file: `src/Lite3_sdk_deploy/config/navigation_mid360s.yaml`:
+```
+...
+sub_maps:
+  ros__parameters:
+    pose_graph_dir: "/tmp/2026_xxx" 
+...
+```
+- Launch:
+```
+ros2 launch lite3_sdk_deploy mujoco_simulation_ros2_dddrm.launch.py mode:=1 xml:=stairs_floors.xml
+```
+- In Rviz, click on "3D pose estimate" -> set initial pose, then click on "3D goal pose" -> set target goal for navigation
+
+### Tunable config files:
+
+- `src/dddmr_navigation/external/lite3/sdk_deploy/src/Lite3_sdk_deploy/config/mapping_mid360s.yaml`
+- `src/dddmr_navigation/external/lite3/sdk_deploy/src/Lite3_sdk_deploy/config/navigation_mid360s.yaml`
+
+---
 ## 🚀 Big update - Deep Lego Loam with YOLO11+TensorRT!
 <p align='center'>
     <img src="https://github.com/dfl-rlab/dddmr_documentation_materials/blob/main/dddmr_lego_loam_bor/yolo_lego_loam.gif" width="400" height="260"/><p align='center'>Lego Loam + YOLOV11 using TensorRT</p>
